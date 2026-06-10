@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <!-- Librería para escanear códigos QR -->
-  <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+  <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 
   <style>
     body {
@@ -23,7 +23,7 @@
     .card {
       background: white;
       width: 90%;
-      max-width: 380px;
+      max-width: 390px;
       padding: 25px;
       border-radius: 12px;
       box-shadow: 0 2px 12px rgba(0,0,0,0.15);
@@ -69,6 +69,11 @@
     button:hover {
       background-color: #45a049;
     }
+
+    button:disabled {
+      background-color: #999;
+      cursor: not-allowed;
+    }
   </style>
 </head>
 
@@ -78,7 +83,7 @@
 
     <p>Apunta la cámara al código QR de asistencia.</p>
 
-    <button onclick="iniciarEscaner()">Activar cámara</button>
+    <button id="btnCamara" onclick="iniciarEscaner()">Activar cámara</button>
 
     <div id="reader"></div>
 
@@ -88,10 +93,15 @@
   </div>
 
   <script>
-    // IMPORTANTE:
-    // Pega aquí tu URL real de Apps Script terminada en /exec
-    const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx1BfKHYex1_oiukvzOnZbdnP78apCFZkgKTSDQxJINvgq0TZSeUrwIa6cQglVa5GhZCg/exec
-";
+    // URL de la Web App de Apps Script
+    const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx1BfKHYex1_oiukvzOnZbdnP78apCFZkgKTSDQxJINvgq0TZSeUrwIa6cQglVa5GhZCg/exec";
+
+    let scannerActivo = false;
+    let html5QrCode = null;
+
+    function mostrarMensaje(texto) {
+      document.getElementById("mensaje").innerHTML = texto;
+    }
 
     function extraerCodigo(textoQR) {
       try {
@@ -119,31 +129,73 @@
     }
 
     async function iniciarEscaner() {
-      const mensaje = document.getElementById("mensaje");
+      const boton = document.getElementById("btnCamara");
 
-      mensaje.innerHTML = "📷 Activando cámara...";
+      if (scannerActivo) {
+        mostrarMensaje("⚠️ La cámara ya está activa.");
+        return;
+      }
 
-      const html5QrCode = new Html5Qrcode("reader");
-
-      const config = {
-        fps: 10,
-        qrbox: {
-          width: 230,
-          height: 230
-        }
-      };
+      if (typeof Html5Qrcode === "undefined") {
+        mostrarMensaje("❌ No cargó la librería html5-qrcode. Revisa tu conexión o recarga la página.");
+        return;
+      }
 
       try {
+        boton.disabled = true;
+        boton.innerText = "Activando cámara...";
+        mostrarMensaje("📷 Solicitando permiso de cámara...");
+
+        html5QrCode = new Html5Qrcode("reader");
+
+        const cameras = await Html5Qrcode.getCameras();
+
+        if (!cameras || cameras.length === 0) {
+          mostrarMensaje("❌ No se detectó ninguna cámara en este dispositivo.");
+          boton.disabled = false;
+          boton.innerText = "Activar cámara";
+          return;
+        }
+
+        let cameraId = cameras[0].id;
+
+        for (let i = 0; i < cameras.length; i++) {
+          const label = cameras[i].label.toLowerCase();
+
+          if (
+            label.includes("back") ||
+            label.includes("rear") ||
+            label.includes("environment") ||
+            label.includes("trasera")
+          ) {
+            cameraId = cameras[i].id;
+            break;
+          }
+        }
+
+        const config = {
+          fps: 10,
+          qrbox: {
+            width: 230,
+            height: 230
+          }
+        };
+
         await html5QrCode.start(
-          { facingMode: "environment" },
+          cameraId,
           config,
-          async (decodedText) => {
+          async function(decodedText) {
             const codigo = extraerCodigo(decodedText);
 
-            mensaje.innerHTML =
-              "✅ QR detectado. Código: " + codigo + "<br>Registrando asistencia...";
+            mostrarMensaje(
+              "✅ QR detectado. Código: " + codigo + "<br>Registrando asistencia..."
+            );
 
-            await html5QrCode.stop();
+            try {
+              await html5QrCode.stop();
+            } catch (e) {}
+
+            scannerActivo = false;
 
             const ip = await obtenerIP();
 
@@ -155,13 +207,25 @@
 
             window.location.href = destino;
           },
-          (errorMessage) => {
-            // No se muestra nada aquí para evitar mensajes repetidos mientras escanea.
+          function(errorMessage) {
+            // No mostrar errores repetitivos mientras escanea.
           }
         );
+
+        scannerActivo = true;
+        boton.innerText = "Cámara activa";
+        mostrarMensaje("📷 Cámara activa. Apunta al código QR.");
+
       } catch (error) {
-        mensaje.innerHTML =
-          "❌ No se pudo activar la cámara. Revisa permisos del navegador.";
+        mostrarMensaje(
+          "❌ No se pudo activar la cámara.<br><br>" +
+          "<strong>Detalle:</strong> " + error.message + "<br><br>" +
+          "Prueba desde Chrome en celular y acepta el permiso de cámara."
+        );
+
+        boton.disabled = false;
+        boton.innerText = "Activar cámara";
+        scannerActivo = false;
       }
     }
   </script>
