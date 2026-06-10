@@ -1,1 +1,144 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Escáner QR de Asistencia</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
+  <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background-color: #f0f2f5;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      text-align: center;
+    }
+
+    .card {
+      background: white;
+      width: 90%;
+      max-width: 380px;
+      padding: 25px;
+      border-radius: 12px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.15);
+    }
+
+    h2 {
+      margin-top: 0;
+    }
+
+    #reader {
+      width: 100%;
+      margin-top: 15px;
+    }
+
+    .msg {
+      margin-top: 15px;
+      padding: 10px;
+      border-radius: 8px;
+      background-color: #e9f5ff;
+      font-size: 14px;
+    }
+
+    button {
+      width: 90%;
+      padding: 12px;
+      margin-top: 15px;
+      font-size: 16px;
+      border-radius: 8px;
+      border: none;
+      background-color: #4CAF50;
+      color: white;
+      cursor: pointer;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="card">
+    <h2>Escáner QR</h2>
+
+    <p>Apunta la cámara al código QR de asistencia.</p>
+
+    <button onclick="iniciarEscaner()">Activar cámara</button>
+
+    <div id="reader"></div>
+
+    <div class="msg" id="mensaje">
+      Esperando activación de cámara...
+    </div>
+  </div>
+
+  <script>
+    function obtenerParametro(nombre) {
+      const params = new URLSearchParams(window.location.search);
+      return params.get(nombre);
+    }
+
+    function extraerCodigo(textoQR) {
+      try {
+        const url = new URL(textoQR);
+        const codigo = url.searchParams.get("codigo");
+
+        if (codigo) {
+          return codigo;
+        }
+
+        return textoQR;
+      } catch (error) {
+        return textoQR;
+      }
+    }
+
+    async function iniciarEscaner() {
+      const mensaje = document.getElementById("mensaje");
+      const returnUrl = obtenerParametro("returnUrl");
+
+      if (!returnUrl) {
+        mensaje.innerHTML = "❌ No se recibió la URL de retorno de Apps Script.";
+        return;
+      }
+
+      mensaje.innerHTML = "📷 Activando cámara...";
+
+      const html5QrCode = new Html5Qrcode("reader");
+
+      const config = {
+        fps: 10,
+        qrbox: {
+          width: 230,
+          height: 230
+        }
+      };
+
+      try {
+        await html5QrCode.start(
+          { facingMode: "environment" },
+          config,
+          async (decodedText) => {
+            const codigo = extraerCodigo(decodedText);
+
+            mensaje.innerHTML = "✅ QR detectado. Código: " + codigo;
+
+            await html5QrCode.stop();
+
+            const destino = returnUrl + "?codigo=" + encodeURIComponent(codigo);
+
+            window.location.href = destino;
+          },
+          (errorMessage) => {
+            // No mostrar errores constantes de lectura.
+          }
+        );
+      } catch (error) {
+        mensaje.innerHTML = "❌ No se pudo activar la cámara. Revisa permisos del navegador.";
+      }
+    }
+  </script>
+</body>
+</html>
